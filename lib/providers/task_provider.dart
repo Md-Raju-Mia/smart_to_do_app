@@ -7,10 +7,14 @@ import '../services/notification_service.dart';
 class TaskProvider with ChangeNotifier {
   List<Task> _tasks = [];
   bool _isDarkMode = false;
+  String _searchQuery = '';
+  String _sortBy = 'Due Date'; // 'Due Date', 'Priority'
   static const String _themeKey = 'isDarkMode';
 
   List<Task> get tasks => _tasks;
   bool get isDarkMode => _isDarkMode;
+  String get searchQuery => _searchQuery;
+  String get sortBy => _sortBy;
 
   final DBHelper _dbHelper = DBHelper();
   final NotificationService _notificationService = NotificationService();
@@ -68,26 +72,60 @@ class TaskProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    notifyListeners();
+  }
+
+  void setSortBy(String sort) {
+    _sortBy = sort;
+    notifyListeners();
+  }
+
   // Analytics
   int get completedTasksCount => _tasks.where((t) => t.isCompleted).length;
   double get completionRate => _tasks.isEmpty ? 0 : completedTasksCount / _tasks.length;
 
-  // Filtering
-  List<Task> getTasksByFilter(String filter) {
+  // Filtering, Searching, and Sorting
+  List<Task> getFilteredTasks(String filter) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     
+    List<Task> filtered = _tasks;
+
+    // 1. Filter by status/date
     switch (filter) {
       case 'Today':
-        return _tasks.where((t) => 
+        filtered = _tasks.where((t) => 
           DateTime(t.dueDate.year, t.dueDate.month, t.dueDate.day).isAtSameMomentAs(today) && !t.isCompleted
         ).toList();
+        break;
       case 'Upcoming':
-        return _tasks.where((t) => t.dueDate.isAfter(today.add(const Duration(days: 1))) && !t.isCompleted).toList();
+        filtered = _tasks.where((t) => t.dueDate.isAfter(today.add(const Duration(days: 1))) && !t.isCompleted).toList();
+        break;
       case 'Completed':
-        return _tasks.where((t) => t.isCompleted).toList();
+        filtered = _tasks.where((t) => t.isCompleted).toList();
+        break;
       default:
-        return _tasks;
+        // 'All' - basically everything
+        break;
     }
+
+    // 2. Search
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((t) => 
+        t.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+        t.description.toLowerCase().contains(_searchQuery.toLowerCase())
+      ).toList();
+    }
+
+    // 3. Sort
+    if (_sortBy == 'Due Date') {
+      filtered.sort((a, b) => a.dueDate.compareTo(b.dueDate));
+    } else if (_sortBy == 'Priority') {
+      filtered.sort((a, b) => b.priority.index.compareTo(a.priority.index)); // High (2) to Low (0)
+    }
+
+    return filtered;
   }
 }
